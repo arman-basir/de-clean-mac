@@ -1,0 +1,74 @@
+name: Build macOS App
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: "Build release binary (universal: Apple Silicon + Intel)"
+        run: |
+          swift build -c release --arch arm64
+          swift build -c release --arch x86_64
+          lipo -create -output DeCleanMacUniversal \
+            .build/arm64-apple-macosx/release/DeCleanMac \
+            .build/x86_64-apple-macosx/release/DeCleanMac
+          lipo -info DeCleanMacUniversal
+
+      - name: Create .icns from the existing iconset
+        run: |
+          ICONSET_SRC="Sources/DeCleanMac/Resources/Assets.xcassets/AppIcon.appiconset"
+          mkdir -p AppIcon.iconset
+          cp "$ICONSET_SRC/icon_16x16.png"      AppIcon.iconset/icon_16x16.png
+          cp "$ICONSET_SRC/icon_16x16@2x.png"   AppIcon.iconset/icon_16x16@2x.png
+          cp "$ICONSET_SRC/icon_32x32.png"      AppIcon.iconset/icon_32x32.png
+          cp "$ICONSET_SRC/icon_32x32@2x.png"   AppIcon.iconset/icon_32x32@2x.png
+          cp "$ICONSET_SRC/icon_128x128.png"    AppIcon.iconset/icon_128x128.png
+          cp "$ICONSET_SRC/icon_128x128@2x.png" AppIcon.iconset/icon_128x128@2x.png
+          cp "$ICONSET_SRC/icon_256x256.png"    AppIcon.iconset/icon_256x256.png
+          cp "$ICONSET_SRC/icon_256x256@2x.png" AppIcon.iconset/icon_256x256@2x.png
+          cp "$ICONSET_SRC/icon_512x512.png"    AppIcon.iconset/icon_512x512.png
+          cp "$ICONSET_SRC/icon_512x512@2x.png" AppIcon.iconset/icon_512x512@2x.png
+          iconutil -c icns AppIcon.iconset -o AppIcon.icns
+
+      - name: Assemble the .app bundle
+        run: |
+          APP="De Clean Mac.app"
+          mkdir -p "$APP/Contents/MacOS"
+          mkdir -p "$APP/Contents/Resources"
+          cp DeCleanMacUniversal "$APP/Contents/MacOS/DeCleanMac"
+          cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+
+          cat > "$APP/Contents/Info.plist" << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key><string>DeCleanMac</string>
+            <key>CFBundleIconFile</key><string>AppIcon</string>
+            <key>CFBundleIdentifier</key><string>com.declean.mac</string>
+            <key>CFBundleName</key><string>De Clean Mac</string>
+            <key>CFBundleDisplayName</key><string>De Clean Mac</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>1.0</string>
+            <key>CFBundleVersion</key><string>1</string>
+            <key>LSMinimumSystemVersion</key><string>13.0</string>
+            <key>NSHighResolutionCapable</key><true/>
+          </dict>
+          </plist>
+          EOF
+          chmod +x "$APP/Contents/MacOS/DeCleanMac"
+          zip -r "DeCleanMac-macOS.zip" "$APP"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeCleanMac-macOS
+          path: DeCleanMac-macOS.zip
